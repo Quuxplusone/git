@@ -631,7 +631,7 @@ def branchExists(ref):
 def extractLogMessageFromGitCommit(commit):
     logMessage = ""
 
-    ## fixme: title is first line of commit, not 1st paragraph.
+    # TODO FIXME: title is first line of commit, not 1st paragraph.
     foundTitle = False
     for log in read_pipe_lines(git_build_cmd('cat-file', 'commit', commit)):
         if not foundTitle:
@@ -2987,7 +2987,7 @@ class P4Sync(Command, P4UserMap):
                     continue
                 source = paths[0]
                 destination = paths[1]
-                ## HACK
+                # TODO FIXME: HACK
                 if p4PathStartsWith(source, self.depotPaths[0]) and p4PathStartsWith(destination, self.depotPaths[0]):
                     source = source[len(self.depotPaths[0]):-4]
                     destination = destination[len(self.depotPaths[0]):-4]
@@ -3095,23 +3095,18 @@ class P4Sync(Command, P4UserMap):
         self.gitStream.flush()
         branchPrefix = self.depotPaths[0] + branch + "/"
         range = "@1,%s" % maxChange
-        #print "prefix" + branchPrefix
         changes = p4ChangesForPaths([branchPrefix], range, self.changes_block_size)
         if len(changes) <= 0:
             return False
         firstChange = changes[0]
-        #print "first change in branch: %s" % firstChange
         sourceBranch = self.knownBranches[branch]
         sourceDepotPath = self.depotPaths[0] + sourceBranch
         sourceRef = self.gitRefForBranch(sourceBranch)
-        #print "source " + sourceBranch
 
         branchParentChange = int(p4Cmd(["changes", "-m", "1", "%s...@1,%s" % (sourceDepotPath, firstChange)])["change"])
-        #print "branch parent: %s" % branchParentChange
         gitParent = self.gitCommitByP4Change(sourceRef, branchParentChange)
         if len(gitParent) > 0:
             self.initialParents[self.gitRefForBranch(branch)] = gitParent
-            #print "parent git commit: %s" % gitParent
 
         self.importChanges(changes)
         return True
@@ -3145,7 +3140,7 @@ class P4Sync(Command, P4UserMap):
                 if self.detectBranches:
                     branches = self.splitFilesIntoBranches(description)
                     for branch in branches.keys():
-                        ## HACK  --hwn
+                        # TODO FIXME: HACK  --hwn
                         branchPrefix = self.depotPaths[0] + branch + "/"
                         self.branchPrefixes = [branchPrefix]
 
@@ -3245,7 +3240,6 @@ class P4Sync(Command, P4UserMap):
 
             if info["action"] in self.delete_actions:
                 # don't increase the file cnt, otherwise details["depotFile123"] will have gaps!
-                #fileCnt = fileCnt + 1
                 continue
 
             for prop in ["depotFile", "rev", "action", "type"]:
@@ -3306,7 +3300,7 @@ class P4Sync(Command, P4UserMap):
         if self.useClientSpec:
             self.clientSpecDirs = getClientSpec()
 
-        # TODO: should always look at previous commits,
+        # TODO FIXME: should always look at previous commits,
         # merge with previous imports, if possible.
         if args == []:
             if self.hasOrigin:
@@ -3446,7 +3440,7 @@ class P4Sync(Command, P4UserMap):
             self.getLabels()
 
         if self.detectBranches:
-            ## FIXME - what's a P4 projectName ?
+            # TODO FIXME - what's a P4 projectName ?
             self.projectName = self.guessProjectName()
 
             if self.hasOrigin:
@@ -3458,8 +3452,7 @@ class P4Sync(Command, P4UserMap):
                 print "initial parents: %s" % self.initialParents
             for b in self.p4BranchesInGit:
                 if b != "master":
-
-                    ## FIXME
+                    # TODO FIXME
                     b = b[len(self.projectName):]
                 self.createdBranches.add(b)
 
@@ -3624,7 +3617,7 @@ class P4Clone(P4Sync):
         self.cloneBare = False
 
     def defaultDestination(self, args):
-        ## TODO: use common prefix of args?
+        # TODO FIXME: use common prefix of args?
         depotPath = args[0]
         depotDir = re.sub("(@[^@]*)$", "", depotPath)
         depotDir = re.sub("(#[^#]*)$", "", depotDir)

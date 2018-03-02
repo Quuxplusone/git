@@ -2259,14 +2259,11 @@ class View(object):
             if close_quote_index <= 0:
                 die("No first-word closing quote found: %s" % view_line)
             depot_side = view_line[1:close_quote_index]
-            # skip closing quote and space
-            rhs_index = close_quote_index + 1 + 1
         else:
             space_index = view_line.find(" ")
             if space_index <= 0:
                 die("No word-splitting space found: %s" % view_line)
-            depot_side = view_line[0:space_index]
-            rhs_index = space_index + 1
+            depot_side = view_line[:space_index]
 
         # prefix + means overlay on previous mapping
         if depot_side.startswith("+"):

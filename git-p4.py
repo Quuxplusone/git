@@ -674,7 +674,7 @@ def gitBranchExists(branch):
 
 _gitConfig = {}
 def gitConfig(key, typeSpecifier=None):
-    if not _gitConfig.has_key(key):
+    if key not in _gitConfig:
         if typeSpecifier:
             cmd = git_build_cmd('config', typeSpecifier, key)
         else:
@@ -687,7 +687,7 @@ def gitConfigBool(key):
        variable is set to true, and False if set to false or not present
        in the config."""
 
-    if not _gitConfig.has_key(key):
+    if key not in _gitConfig:
         _gitConfig[key] = gitConfig(key, '--bool') == "true"
     return _gitConfig[key]
 
@@ -757,7 +757,7 @@ def findUpstreamBranchPoint(head = "HEAD"):
         tip = branches[branch]
         log = extractLogMessageFromGitCommit(tip)
         settings = extractSettingsGitLog(log)
-        if settings.has_key("depot-paths"):
+        if 'depot-paths' in settings:
             paths = ",".join(settings["depot-paths"])
             branchByDepotPath[paths] = "remotes/p4/" + branch
 
@@ -767,9 +767,9 @@ def findUpstreamBranchPoint(head = "HEAD"):
         commit = head + "~%s" % parent
         log = extractLogMessageFromGitCommit(commit)
         settings = extractSettingsGitLog(log)
-        if settings.has_key("depot-paths"):
+        if 'depot-paths' in settings:
             paths = ",".join(settings["depot-paths"])
-            if branchByDepotPath.has_key(paths):
+            if paths in branchByDepotPath:
                 return [branchByDepotPath[paths], settings]
 
         parent = parent + 1
@@ -793,8 +793,7 @@ def createOrUpdateBranchesFromOrigin(localRefPrefix = "refs/remotes/p4/", silent
         originHead = line
 
         original = extractSettingsGitLog(extractLogMessageFromGitCommit(originHead))
-        if (not original.has_key('depot-paths')
-            or not original.has_key('change')):
+        if ('depot-paths' not in original) or ('change' not in original):
             continue
 
         update = False
@@ -804,7 +803,7 @@ def createOrUpdateBranchesFromOrigin(localRefPrefix = "refs/remotes/p4/", silent
             update = True
         else:
             settings = extractSettingsGitLog(extractLogMessageFromGitCommit(remoteHead))
-            if settings.has_key('change') > 0:
+            if 'change' in settings:
                 if settings['depot-paths'] == original['depot-paths']:
                     originP4Change = int(original['change'])
                     p4Change = int(settings['change'])
@@ -887,11 +886,10 @@ def p4ChangesForPaths(depotPaths, changeRange, requestedBlockSize):
 
         # Insert changes in chronological order
         for entry in reversed(p4CmdList(cmd)):
-            if entry.has_key('p4ExitCode'):
+            if 'p4ExitCode' in entry:
                 die('Error retrieving changes descriptions ({})'.format(entry['p4ExitCode']))
-            if not entry.has_key('change'):
-                continue
-            changes.add(int(entry['change']))
+            if 'change' in entry:
+                changes.add(int(entry['change']))
 
         if not block_size:
             break
@@ -1199,7 +1197,7 @@ class P4UserMap:
 
         results = p4CmdList("user -o")
         for r in results:
-            if r.has_key('User'):
+            if 'User' in r:
                 self.myP4UserId = r['User']
                 return r['User']
         die("Could not find your p4 user id")
@@ -1223,10 +1221,9 @@ class P4UserMap:
         self.emails = {}
 
         for output in p4CmdList("users"):
-            if not output.has_key("User"):
-                continue
-            self.users[output["User"]] = output["FullName"] + " <" + output["Email"] + ">"
-            self.emails[output["Email"]] = output["User"]
+            if 'User' in output:
+                self.users[output["User"]] = output["FullName"] + " <" + output["Email"] + ">"
+                self.emails[output["Email"]] = output["User"]
 
         mapUserConfigRegex = re.compile(r"^\s*(\S+)\s*=\s*(.+)\s*<(\S+)>\s*$", re.VERBOSE)
         for mapUserConfig in gitConfigList("git-p4.mapUser"):
@@ -1462,12 +1459,8 @@ class P4Submit(Command, P4UserMap):
     def p4UserForCommit(self,id):
         # Return the tuple (perforce user,git email) for a given git commit id
         self.getUserMapFromPerforceServer()
-        gitEmail = read_pipe(git_build_cmd('log', '--max-count=1', '--format=%ae', id))
-        gitEmail = gitEmail.strip()
-        if not self.emails.has_key(gitEmail):
-            return (None,gitEmail)
-        else:
-            return (self.emails[gitEmail],gitEmail)
+        gitEmail = read_pipe(git_build_cmd('log', '--max-count', '1', '--format', '%ae', id)).strip()
+        return (self.emails.get(gitEmail, None), gitEmail)
 
     def checkValidP4Users(self,commits):
         # check if any git authors cannot be mapped to p4 users
@@ -1488,14 +1481,14 @@ class P4Submit(Command, P4UserMap):
         results = p4CmdList("client -o")        # find the current client
         client = None
         for r in results:
-            if r.has_key('Client'):
+            if 'Client' in r:
                 client = r['Client']
                 break
         if not client:
             die("could not get client spec")
         results = p4CmdList(["changes", "-c", client, "-m", "1"])
         for r in results:
-            if r.has_key('change'):
+            if 'change' in r:
                 return r['change']
         die("Could not get changelist number for last submit - cannot patch up user details")
 
@@ -1513,10 +1506,9 @@ class P4Submit(Command, P4UserMap):
 
         result = p4CmdList("change -f -i", stdin=input)
         for r in result:
-            if r.has_key('code'):
-                if r['code'] == 'error':
-                    die("Could not modify user field of changelist %s to %s:%s" % (changelist, newUser, r['data']))
-            if r.has_key('data'):
+            if r.get('code', None) == 'error':
+                die("Could not modify user field of changelist %s to %s:%s" % (changelist, newUser, r['data']))
+            if 'data' in r:
                 print("Updated user field for changelist %s to %s" % (changelist, newUser))
                 return
         die("Could not modify user field of changelist %s to %s" % (changelist, newUser))
@@ -1526,12 +1518,9 @@ class P4Submit(Command, P4UserMap):
         # which are required to modify changelists.
         results = p4CmdList(["protects", self.depotPath])
         for r in results:
-            if r.has_key('perm'):
-                if r['perm'] == 'admin':
-                    return 1
-                if r['perm'] == 'super':
-                    return 1
-        return 0
+            if r.get('perm', None) in ['admin', 'super']:
+                return True
+        return False
 
     def prepareSubmitTemplate(self, changelist=None):
         """Run "p4 change -o" to grab a change specification template.
@@ -1566,18 +1555,15 @@ class P4Submit(Command, P4UserMap):
         if changelist:
             args.append(str(changelist))
         for entry in p4CmdList(args):
-            if not entry.has_key('code'):
-                continue
-            if entry['code'] == 'stat':
+            if entry.get('code', None) == 'stat':
                 change_entry = entry
                 break
         if not change_entry:
             die('Failed to decode output of p4 change -o')
         for key, value in change_entry.iteritems():
             if key.startswith('File'):
-                if settings.has_key('depot-paths'):
-                    if not [p for p in settings['depot-paths']
-                            if p4PathStartsWith(value, p)]:
+                if 'depot-paths' in settings:
+                    if not [p for p in settings['depot-paths'] if p4PathStartsWith(value, p)]:
                         continue
                 else:
                     if not p4PathStartsWith(value, self.depotPath):
@@ -1586,7 +1572,7 @@ class P4Submit(Command, P4UserMap):
                 continue
         # Output in the order expected by prepareLogMessage
         for key in ['Change', 'Client', 'User', 'Status', 'Description', 'Jobs']:
-            if not change_entry.has_key(key):
+            if key not in change_entry:
                 continue
             template += '\n'
             template += key + ':'
@@ -1614,9 +1600,8 @@ class P4Submit(Command, P4UserMap):
         mtime = os.stat(template_file).st_mtime
 
         # invoke the editor
-        if os.environ.has_key("P4EDITOR") and (os.environ.get("P4EDITOR") != ""):
-            editor = os.environ.get("P4EDITOR")
-        else:
+        editor = os.environ.get('P4EDITOR', '')
+        if not editor:
             editor = read_pipe(git_build_cmd('var', 'GIT_EDITOR')).strip()
         system(["sh", "-c", ('%s "$@"' % editor), editor, template_file])
 
@@ -1638,12 +1623,11 @@ class P4Submit(Command, P4UserMap):
 
     def get_diff_description(self, editedFiles, filesToAdd, symlinks):
         # diff
-        if os.environ.has_key("P4DIFF"):
-            del(os.environ["P4DIFF"])
+        if 'P4DIFF' in os.environ:
+            del os.environ['P4DIFF']
         diff = ""
         for editedFile in editedFiles:
-            diff += p4_read_pipe(['diff', '-du',
-                                  wildcard_encode(editedFile)])
+            diff += p4_read_pipe(['diff', '-du', wildcard_encode(editedFile)])
 
         # new file diff
         newdiff = ""
@@ -1960,7 +1944,7 @@ class P4Submit(Command, P4UserMap):
             logMessage = extractLogMessageFromGitCommit(name)
             values = extractSettingsGitLog(logMessage)
 
-            if not values.has_key('change'):
+            if 'change' not in values:
                 # a tag pointing to something not sent to p4; ignore
                 if verbose:
                     print "git tag %s does not give a p4 commit" % name
@@ -2434,8 +2418,10 @@ class P4Sync(Command, P4UserMap):
                              for path in self.cloneExclude]
         files = []
         fnum = 0
-        while commit.has_key("depotFile%s" % fnum):
-            path =  commit["depotFile%s" % fnum]
+        while True:
+            path = commit.get("depotFile%s" % fnum, None)
+            if path is None:
+                break
 
             if [p for p in self.cloneExclude
                 if p4PathStartsWith(path, p)]:
@@ -2459,8 +2445,10 @@ class P4Sync(Command, P4UserMap):
     def extractJobsFromCommit(self, commit):
         jobs = []
         jnum = 0
-        while commit.has_key("job%s" % jnum):
-            job = commit["job%s" % jnum]
+        while True:
+            job = commit.get("job%s" % jnum, None)
+            if job is None:
+                break
             jobs.append(job)
             jnum = jnum + 1
         return jobs
@@ -2507,8 +2495,10 @@ class P4Sync(Command, P4UserMap):
 
         branches = {}
         fnum = 0
-        while commit.has_key("depotFile%s" % fnum):
-            path =  commit["depotFile%s" % fnum]
+        while True:
+            path = commit.get("depotFile%s" % fnum)
+            if path is None:
+                break
             found = [p for p in self.depotPaths
                      if p4PathStartsWith(path, p)]
             if not found:
@@ -2689,7 +2679,7 @@ class P4Sync(Command, P4UserMap):
             else:
                 die("Error from p4 print: %s" % err)
 
-        if marshalled.has_key('depotFile') and self.stream_have_file_info:
+        if 'depotFile' in marshalled and self.stream_have_file_info:
             # start of a new file - output the old one first
             self.streamOneP4File(self.stream_file, self.stream_contents)
             self.stream_file = {}
@@ -2752,7 +2742,7 @@ class P4Sync(Command, P4UserMap):
                       cb=streamP4FilesCbSelf)
 
             # do the last chunk
-            if self.stream_file.has_key('depotFile'):
+            if 'depotFile' in self.stream_file:
                 self.streamOneP4File(self.stream_file, self.stream_contents)
 
     def make_email(self, userid):
@@ -2771,26 +2761,17 @@ class P4Sync(Command, P4UserMap):
         gitStream.write("tag %s\n" % labelName)
         gitStream.write("from %s\n" % commit)
 
-        if labelDetails.has_key('Owner'):
-            owner = labelDetails["Owner"]
-        else:
-            owner = None
+        owner = labelDetails.get('Owner', None)
 
         # Try to use the owner of the p4 label, or failing that,
         # the current p4 user id.
-        if owner:
-            email = self.make_email(owner)
-        else:
-            email = self.make_email(self.p4UserId())
+        email = self.make_email(owner or self.p4UserId())
         tagger = "%s %s %s" % (email, epoch, self.tz)
 
         gitStream.write("tagger %s\n" % tagger)
 
-        print "labelDetails=",labelDetails
-        if labelDetails.has_key('Description'):
-            description = labelDetails['Description']
-        else:
-            description = 'Label from git p4'
+        print "labelDetails=", labelDetails
+        description = labelDetails.get('Description', 'Label from git p4')
 
         gitStream.write("data %d\n" % len(description))
         gitStream.write(description)
@@ -2862,7 +2843,7 @@ class P4Sync(Command, P4UserMap):
 
         change = int(details["change"])
 
-        if self.labels.has_key(change):
+        if change in self.labels:
             label = self.labels[change]
             labelDetails = label[0]
             labelRevisions = label[1]
@@ -2899,7 +2880,7 @@ class P4Sync(Command, P4UserMap):
 
         l = p4CmdList(["labels"] + ["%s..." % p for p in self.depotPaths])
         if len(l) > 0 and not self.silent:
-            print "Finding files belonging to labels in %s" % `self.depotPaths`
+            print "Finding files belonging to labels in %s" % repr(self.depotPaths)
 
         for output in l:
             label = output["label"]
@@ -2951,7 +2932,7 @@ class P4Sync(Command, P4UserMap):
             change = p4Cmd(["changes", "-m", "1"] + ["%s...@%s" % (p, name)
                                 for p in self.depotPaths])
 
-            if change.has_key('change'):
+            if 'change' in change:
                 # find the corresponding git commit; take the oldest commit
                 changelist = int(change['change'])
                 if changelist in self.committedChanges:
@@ -3014,7 +2995,7 @@ class P4Sync(Command, P4UserMap):
         for info in p4CmdList(command):
             details = p4Cmd(["branch", "-o", info["branch"]])
             viewIdx = 0
-            while details.has_key("View%s" % viewIdx):
+            while ("View%s" % viewIdx) in details:
                 paths = details["View%s" % viewIdx].split(" ")
                 viewIdx = viewIdx + 1
                 # require standard //depot/foo/... //depot/bar/... mapping
@@ -3073,15 +3054,14 @@ class P4Sync(Command, P4UserMap):
             self.knownBranches[branch] = branch
 
     def updateOptionDict(self, d):
-        option_keys = {}
+        option_strings = []
         if self.keepRepoPath:
-            option_keys['keepRepoPath'] = 1
-
-        d["options"] = ' '.join(sorted(option_keys.keys()))
+            option_strings.append('keepRepoPath')
+        d['options'] = ' '.join(sorted(option_strings))
 
     def readOptions(self, d):
-        self.keepRepoPath = (d.has_key('options')
-                             and ('keepRepoPath' in d['options']))
+        option_strings = d.get('options', '').split()
+        self.keepRepoPath = ('keepRepoPath' in option_strings)
 
     def gitRefForBranch(self, branch):
         if branch == "main":
@@ -3380,8 +3360,7 @@ class P4Sync(Command, P4UserMap):
                 settings = extractSettingsGitLog(logMsg)
 
                 self.readOptions(settings)
-                if (settings.has_key('depot-paths')
-                    and settings.has_key ('change')):
+                if 'depot-paths' in settings and 'change' in settings:
                     change = int(settings['change']) + 1
                     p4Change = max(p4Change, change)
 

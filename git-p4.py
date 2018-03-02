@@ -93,11 +93,22 @@ def p4_build_cmd(cmd):
         real_cmd += cmd
     return real_cmd
 
+def git_build_cmd(*args):
+    """Build a suitable git command line.
+
+    This consolidates building and returning a git command line into one
+    location. It means that hooking into the environment, or other configuration
+    can be done more easily.
+    """
+    real_cmd = ['git']
+    real_cmd.extend(args)
+    return real_cmd
+
 def git_dir(path):
     """ Return TRUE if the given path is a git directory (/path/to/dir/.git).
         This won't automatically add ".git" to a directory.
     """
-    d = read_pipe(["git", "--git-dir", path, "rev-parse", "--git-dir"], True).strip()
+    d = read_pipe(git_build_cmd('--git-dir', path, 'rev-parse', '--git-dir'), True).strip()
     if not d or len(d) == 0:
         return None
     else:
@@ -456,7 +467,7 @@ def getP4Labels(depotPaths):
 # Return the set of all git tags
 def getGitTags():
     gitTags = set()
-    for line in read_pipe_lines(["git", "tag"]):
+    for line in read_pipe_lines(git_build_cmd('tag')):
         tag = line.strip()
         gitTags.add(tag)
     return gitTags
@@ -605,17 +616,16 @@ def p4Where(depotPath):
     return clientPath
 
 def currentGitBranch():
-    return read_pipe_text(["git", "symbolic-ref", "--short", "-q", "HEAD"])
+    return read_pipe_text(git_build_cmd('symbolic-ref', '--short', '-q', 'HEAD'))
 
 def isValidGitDir(path):
     return git_dir(path) != None
 
 def parseRevision(ref):
-    return read_pipe("git rev-parse %s" % ref).strip()
+    return read_pipe(git_build_cmd('rev-parse', ref)).strip()
 
 def branchExists(ref):
-    rev = read_pipe(["git", "rev-parse", "-q", "--verify", ref],
-                     ignore_error=True)
+    rev = read_pipe(git_build_cmd('rev-parse', '-q', '--verify', ref), ignore_error=True)
     return len(rev) > 0
 
 def extractLogMessageFromGitCommit(commit):
@@ -623,7 +633,7 @@ def extractLogMessageFromGitCommit(commit):
 
     ## fixme: title is first line of commit, not 1st paragraph.
     foundTitle = False
-    for log in read_pipe_lines("git cat-file commit %s" % commit):
+    for log in read_pipe_lines(git_build_cmd('cat-file', 'commit', commit)):
        if not foundTitle:
            if len(log) == 1:
                foundTitle = True
@@ -658,20 +668,18 @@ def extractSettingsGitLog(log):
     return values
 
 def gitBranchExists(branch):
-    proc = subprocess.Popen(["git", "rev-parse", branch],
-                            stderr=subprocess.PIPE, stdout=subprocess.PIPE);
+    proc = subprocess.Popen(git_build_cmd('rev-parse', branch),
+                            stderr=subprocess.PIPE, stdout=subprocess.PIPE)
     return proc.wait() == 0;
 
 _gitConfig = {}
-
 def gitConfig(key, typeSpecifier=None):
     if not _gitConfig.has_key(key):
-        cmd = [ "git", "config" ]
         if typeSpecifier:
-            cmd += [ typeSpecifier ]
-        cmd += [ key ]
-        s = read_pipe(cmd, ignore_error=True)
-        _gitConfig[key] = s.strip()
+            cmd = git_build_cmd('config', typeSpecifier, key)
+        else:
+            cmd = git_build_cmd('config', key)
+        _gitConfig[key] = read_pipe(cmd, ignore_error=True).strip()
     return _gitConfig[key]
 
 def gitConfigBool(key):
@@ -684,10 +692,7 @@ def gitConfigBool(key):
     return _gitConfig[key]
 
 def gitConfigInt(key):
-    if not _gitConfig.has_key(key):
-        cmd = [ "git", "config", "--int", key ]
-        s = read_pipe(cmd, ignore_error=True)
-        v = s.strip()
+    if key not in _gitConfig:
         try:
             _gitConfig[key] = int(gitConfig(key, '--int'))
         except ValueError:
@@ -695,9 +700,9 @@ def gitConfigInt(key):
     return _gitConfig[key]
 
 def gitConfigList(key):
-    if not _gitConfig.has_key(key):
-        s = read_pipe(["git", "config", "--get-all", key], ignore_error=True)
-        _gitConfig[key] = s.strip().splitlines()
+    if key not in _gitConfig:
+        s = read_pipe(git_build_cmd('config', '--get-all', key), ignore_error=True).strip()
+        _gitConfig[key] = s.splitlines()
         if _gitConfig[key] == ['']:
             _gitConfig[key] = []
     return _gitConfig[key]
@@ -711,12 +716,11 @@ def p4BranchesInGit(branchesAreInRemotes=True):
 
     branches = {}
 
-    cmdline = "git rev-parse --symbolic "
-    if branchesAreInRemotes:
-        cmdline += "--remotes"
-    else:
-        cmdline += "--branches"
-
+    cmdline = git_build_cmd(
+        'rev-parse',
+        '--symbolic',
+        '--remotes' if branchesAreInRemotes else '--branches'
+    )
     for line in read_pipe_lines(cmdline):
         line = line.strip()
 
@@ -737,8 +741,8 @@ def p4BranchesInGit(branchesAreInRemotes=True):
 def branch_exists(branch):
     """Make sure that the given ref name really exists."""
 
-    cmd = [ "git", "rev-parse", "--symbolic", "--verify", branch ]
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    p = subprocess.Popen(git_build_cmd('rev-parse', '--symbolic', '--verify', branch),
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out, _ = p.communicate()
     if p.returncode:
         return False
@@ -779,7 +783,7 @@ def createOrUpdateBranchesFromOrigin(localRefPrefix = "refs/remotes/p4/", silent
 
     originPrefix = "origin/p4/"
 
-    for line in read_pipe_lines("git rev-parse --symbolic --remotes"):
+    for line in read_pipe_lines(git_build_cmd('rev-parse', '--symbolic', '--remotes')):
         line = line.strip()
         if (not line.startswith(originPrefix)) or line.endswith("HEAD"):
             continue
@@ -817,7 +821,7 @@ def createOrUpdateBranchesFromOrigin(localRefPrefix = "refs/remotes/p4/", silent
                               remoteHead, ','.join(settings['depot-paths'])))
 
         if update:
-            system("git update-ref %s %s" % (remoteHead, originHead))
+            system(git_build_cmd('update-ref', remoteHead, originHead))
 
 def originP4BranchesExist():
         return gitBranchExists("origin") or gitBranchExists("origin/p4") or gitBranchExists("origin/p4/master")
@@ -1108,7 +1112,7 @@ class GitLFS(LargeFileSystem):
             return (None, '', None)
 
         pointerProcess = subprocess.Popen(
-            ['git', 'lfs', 'pointer', '--file=' + contentFile],
+            git_build_cmd('lfs', 'pointer', '--file', contentFile),
             stdout=subprocess.PIPE
         )
         pointerFile = pointerProcess.stdout.read()
@@ -1135,7 +1139,7 @@ class GitLFS(LargeFileSystem):
 
     def pushFile(self, localLargeFile):
         uploadProcess = subprocess.Popen(
-            ['git', 'lfs', 'push', '--object-id', 'origin', os.path.basename(localLargeFile)]
+            git_build_cmd('lfs', 'push', '--object-id', 'origin', os.path.basename(localLargeFile))
         )
         if uploadProcess.wait():
             die('git-lfs push command failed. Did you define a remote?')
@@ -1288,10 +1292,10 @@ class P4RollBack(Command):
 
         if self.rollbackLocalBranches:
             refPrefix = "refs/heads/"
-            lines = read_pipe_lines("git rev-parse --symbolic --branches")
+            lines = read_pipe_lines(git_build_cmd('rev-parse', '--symbolic', '--branches'))
         else:
             refPrefix = "refs/remotes/"
-            lines = read_pipe_lines("git rev-parse --symbolic --remotes")
+            lines = read_pipe_lines(git_build_cmd('rev-parse', '--symbolic', '--remotes'))
 
         for line in lines:
             if self.rollbackLocalBranches or (line.startswith("p4/") and line != "p4/HEAD\n"):
@@ -1308,14 +1312,14 @@ class P4RollBack(Command):
                 if len(p4Cmd("changes -m 1 "  + ' '.join (['%s...@%s' % (p, maxChange)
                                                            for p in depotPaths]))) == 0:
                     print "Branch %s did not exist at change %s, deleting." % (ref, maxChange)
-                    system("git update-ref -d %s `git rev-parse %s`" % (ref, ref))
+                    system(git_build_cmd('update-ref', '-d', ref, parseRevision(ref)))
                     continue
 
                 while change and int(change) > maxChange:
                     changed = True
                     if self.verbose:
                         print "%s is at %s ; rewinding towards %s" % (ref, change, maxChange)
-                    system("git update-ref %s \"%s^\"" % (ref, ref))
+                    system(git_build_cmd('update-ref', ref, ref + '^'))
                     log = extractLogMessageFromGitCommit(ref)
                     settings =  extractSettingsGitLog(log)
 
@@ -1458,8 +1462,7 @@ class P4Submit(Command, P4UserMap):
     def p4UserForCommit(self,id):
         # Return the tuple (perforce user,git email) for a given git commit id
         self.getUserMapFromPerforceServer()
-        gitEmail = read_pipe(["git", "log", "--max-count=1",
-                              "--format=%ae", id])
+        gitEmail = read_pipe(git_build_cmd('log', '--max-count=1', '--format=%ae', id))
         gitEmail = gitEmail.strip()
         if not self.emails.has_key(gitEmail):
             return (None,gitEmail)
@@ -1614,7 +1617,7 @@ class P4Submit(Command, P4UserMap):
         if os.environ.has_key("P4EDITOR") and (os.environ.get("P4EDITOR") != ""):
             editor = os.environ.get("P4EDITOR")
         else:
-            editor = read_pipe("git var GIT_EDITOR").strip()
+            editor = read_pipe(git_build_cmd('var', 'GIT_EDITOR')).strip()
         system(["sh", "-c", ('%s "$@"' % editor), editor, template_file])
 
         # If the file was not saved, prompt to see if this patch should
@@ -1665,12 +1668,11 @@ class P4Submit(Command, P4UserMap):
     def applyCommit(self, id):
         """Apply one commit, return True if it succeeded."""
 
-        print "Applying", read_pipe(["git", "show", "-s",
-                                     "--format=format:%h %s", id])
+        print "Applying", read_pipe(git_build_cmd('show', '-s', '--format', 'format:%h %s', id))
 
         (p4User, gitEmail) = self.p4UserForCommit(id)
 
-        diff = read_pipe_lines("git diff-tree -r %s \"%s^\" \"%s\"" % (self.diffOpts, id, id))
+        diff = read_pipe_lines(git_build_cmd('diff-tree', '-r', self.diffOpts, id + '^', id))
         filesToAdd = set()
         filesToChangeType = set()
         filesToDelete = set()
@@ -1771,7 +1773,7 @@ class P4Submit(Command, P4UserMap):
                     if pattern:
                         # this file is a possibility...look for RCS keywords.
                         regexp = re.compile(pattern, re.VERBOSE)
-                        for line in read_pipe_lines(["git", "diff", "%s^..%s" % (id, id), file]):
+                        for line in read_pipe_lines(git_build_cmd('diff', '%s^..%s' % (id, id), file)):
                             if regexp.search(line):
                                 if verbose:
                                     print "got keyword match on %s in %s in %s" % (pattern, line, file)
@@ -1970,7 +1972,7 @@ class P4Submit(Command, P4UserMap):
             inHeader = True
             isAnnotated = False
             body = []
-            for l in read_pipe_lines(["git", "cat-file", "-p", name]):
+            for l in read_pipe_lines(git_build_cmd('cat-file', '-p', name)):
                 l = l.strip()
                 if inHeader:
                     if re.match(r'tag\s+', l):
@@ -2103,7 +2105,7 @@ class P4Submit(Command, P4UserMap):
         else:
             commitish = 'HEAD'
 
-        for line in read_pipe_lines(["git", "rev-list", "--no-merges", "%s..%s" % (self.origin, commitish)]):
+        for line in read_pipe_lines(git_build_cmd('rev-list', '--no-merges', '%s..%s' % (self.origin, commitish))):
             commits.append(line.strip())
         commits.reverse()
 
@@ -2161,8 +2163,7 @@ class P4Submit(Command, P4UserMap):
         last = len(commits) - 1
         for i, commit in enumerate(commits):
             if self.dry_run:
-                print " ", read_pipe(["git", "show", "-s",
-                                      "--format=format:%h %s", commit])
+                print " ", read_pipe(git_build_cmd('show', '-s', '--format', 'format:%h %s', commit))
                 ok = True
             else:
                 ok = self.applyCommit(commit)
@@ -2228,8 +2229,7 @@ class P4Submit(Command, P4UserMap):
                         star = "*"
                     else:
                         star = " "
-                    print star, read_pipe(["git", "show", "-s",
-                                           "--format=format:%h %s",  c])
+                    print star, read_pipe(git_build_cmd('show', '-s', '--format', 'format:%h %s',  c))
                 print "You will have to do 'git p4 sync' and rebase."
 
         if gitConfigBool("git-p4.exportLabels"):
@@ -2958,8 +2958,12 @@ class P4Sync(Command, P4UserMap):
                     gitCommit = ":%d" % changelist       # use a fast-import mark
                     commitFound = True
                 else:
-                    gitCommit = read_pipe(["git", "rev-list", "--max-count=1",
-                        "--reverse", ":/\[git-p4:.*change = %d\]" % changelist], ignore_error=True)
+                    gitCommit = read_pipe(
+                        git_build_cmd(
+                            'rev-list', '--max-count', '1', '--reverse', ':/\[git-p4:.*change = %d\]' % changelist
+                        ),
+                        ignore_error=True
+                    )
                     if len(gitCommit) == 0:
                         print "importing label %s: could not find git commit for changelist %d" % (name, changelist)
                     else:
@@ -2987,7 +2991,7 @@ class P4Sync(Command, P4UserMap):
                 # expensive repeatedly fetching all the files for labels that will
                 # never be imported. If the label is moved in the future, the
                 # ignore will need to be removed manually.
-                system(["git", "config", "--add", "git-p4.ignoredP4Labels", name])
+                system(git_build_cmd('config', '--add', 'git-p4.ignoredP4Labels', name))
 
     def guessProjectName(self):
         for p in self.depotPaths:
@@ -3098,7 +3102,7 @@ class P4Sync(Command, P4UserMap):
         while True:
             if self.verbose:
                 print "trying: earliest %s latest %s" % (earliestCommit, latestCommit)
-            next = read_pipe("git rev-list --bisect %s %s" % (latestCommit, earliestCommit)).strip()
+            next = read_pipe(git_build_cmd('rev-list', '--bisect', latestCommit, earliestCommit)).strip()
             if len(next) == 0:
                 if self.verbose:
                     print "argh"
@@ -3151,10 +3155,9 @@ class P4Sync(Command, P4UserMap):
 
     def searchParent(self, parent, branch, target):
         parentFound = False
-        for blob in read_pipe_lines(["git", "rev-list", "--reverse",
-                                     "--no-merges", parent]):
+        for blob in read_pipe_lines(git_build_cmd('rev-list', '--reverse', '--no-merges', parent)):
             blob = blob.strip()
-            if len(read_pipe(["git", "diff-tree", blob, target])) == 0:
+            if len(read_pipe(git_build_cmd('diff-tree', blob, target))) == 0:
                 parentFound = True
                 if self.verbose:
                     print "Found parent of %s in commit %s" % (branch, blob)
@@ -3323,14 +3326,14 @@ class P4Sync(Command, P4UserMap):
             if self.hasOrigin:
                 if not self.silent:
                     print 'Syncing with origin first, using "git fetch origin"'
-                system("git fetch origin")
+                system(git_build_cmd('fetch', 'origin'))
 
         branch_arg_given = bool(self.branch)
         if len(self.branch) == 0:
             self.branch = self.refPrefix + "master"
             if gitBranchExists("refs/heads/p4") and self.importIntoRemotes:
-                system("git update-ref %s refs/heads/p4" % self.branch)
-                system("git branch -D p4")
+                system(git_build_cmd('update-ref', self.branch, 'refs/heads/p4'))
+                system(git_build_cmd('branch', '-D', 'p4'))
 
         # accept either the command-line option, or the configuration variable
         if self.useClientSpec:
@@ -3391,7 +3394,7 @@ class P4Sync(Command, P4UserMap):
                             prev_list = prev.split("/")
                             cur_list = cur.split("/")
                             for i in range(0, min(len(cur_list), len(prev_list))):
-                                if cur_list[i] <> prev_list[i]:
+                                if cur_list[i] != prev_list[i]:
                                     i = i - 1
                                     break
 
@@ -3501,10 +3504,10 @@ class P4Sync(Command, P4UserMap):
 
         self.tz = "%+03d%02d" % (- time.timezone / 3600, ((- time.timezone % 3600) / 60))
 
-        self.importProcess = subprocess.Popen(["git", "fast-import"],
+        self.importProcess = subprocess.Popen(git_build_cmd('fast-import'),
                                               stdin=subprocess.PIPE,
                                               stdout=subprocess.PIPE,
-                                              stderr=subprocess.PIPE);
+                                              stderr=subprocess.PIPE)
         self.gitOutput = self.importProcess.stdout
         self.gitStream = self.importProcess.stdin
         self.gitError = self.importProcess.stderr
@@ -3596,7 +3599,7 @@ class P4Sync(Command, P4UserMap):
         # Cleanup temporary branches created during import
         if self.tempBranches != []:
             for branch in self.tempBranches:
-                read_pipe("git update-ref -d %s" % branch)
+                read_pipe(git_build_cmd('update-ref', '-d', branch))
             os.rmdir(os.path.join(os.environ.get("GIT_DIR", ".git"), self.tempBranchLocation))
 
         # Create a symbolic ref p4/HEAD pointing to p4/<branch> to allow
@@ -3604,7 +3607,7 @@ class P4Sync(Command, P4UserMap):
         if self.importIntoRemotes:
             head_ref = self.refPrefix + "HEAD"
             if not gitBranchExists(head_ref) and gitBranchExists(self.branch):
-                system(["git", "symbolic-ref", head_ref, self.branch])
+                system(git_build_cmd('symbolic-ref', head_ref, self.branch))
 
         return True
 
@@ -3626,10 +3629,10 @@ class P4Rebase(Command):
         return self.rebase()
 
     def rebase(self):
-        if os.system("git update-index --refresh") != 0:
+        if os.system(git_build_cmd('update-index', '--refresh')) != 0:
             die("Some files in your working directory are modified and different than what is in your index. You can use git update-index <filename> to bring the index up to date or stash away all your changes with git stash.");
-        if len(read_pipe("git diff-index HEAD --")) > 0:
-            die("You have uncommitted changes. Please commit them before rebasing or stash them away with git stash.");
+        if len(read_pipe(git_build_cmd('diff-index', 'HEAD', '--'))) > 0:
+            die("You have uncommitted changes. Please commit them before rebasing or stash them away with git stash.")
 
         [upstream, settings] = findUpstreamBranchPoint()
         if len(upstream) == 0:
@@ -3639,9 +3642,9 @@ class P4Rebase(Command):
         upstream = re.sub("~[0-9]+$", "", upstream)
 
         print "Rebasing the current branch onto %s" % upstream
-        oldHead = read_pipe("git rev-parse HEAD").strip()
-        system("git rebase %s" % upstream)
-        system("git diff-tree --stat --summary -M %s HEAD --" % oldHead)
+        oldHead = parseRevision('HEAD')
+        system(git_build_cmd('rebase', upstream))
+        system(git_build_cmd('diff-tree', '--stat', '--summary', '-M', oldHead, 'HEAD', '--'))
         return True
 
 class P4Clone(P4Sync):
@@ -3698,9 +3701,11 @@ class P4Clone(P4Sync):
             os.makedirs(self.cloneDestination)
         chdir(self.cloneDestination)
 
-        init_cmd = [ "git", "init" ]
         if self.cloneBare:
-            init_cmd.append("--bare")
+            init_cmd = git_build_cmd('init', '--bare')
+        else:
+            init_cmd = git_build_cmd('init')
+
         retcode = subprocess.call(init_cmd)
         if retcode:
             raise CalledProcessError(retcode, init_cmd)
@@ -3710,16 +3715,16 @@ class P4Clone(P4Sync):
 
         # create a master branch and check out a work tree
         if gitBranchExists(self.branch):
-            system([ "git", "branch", "master", self.branch ])
+            system(git_build_cmd('branch', 'master', self.branch))
             if not self.cloneBare:
-                system([ "git", "checkout", "-f" ])
+                system(git_build_cmd('checkout', '-f'))
         else:
             print 'Not checking out any branch, use ' \
                   '"git checkout -q -b master <branch>"'
 
         # auto-set this variable if invoked with --use-client-spec
         if self.useClientSpec_from_options:
-            system("git config --bool git-p4.useclientspec true")
+            system(git_build_cmd('config', '--bool', 'git-p4.useclientspec', 'true'))
 
         return True
 
@@ -3735,10 +3740,7 @@ class P4Branches(Command):
         if originP4BranchesExist():
             createOrUpdateBranchesFromOrigin()
 
-        cmdline = "git rev-parse --symbolic "
-        cmdline += " --remotes"
-
-        for line in read_pipe_lines(cmdline):
+        for line in read_pipe_lines(git_build_cmd('rev-parse', '--symbolic', '--remotes')):
             line = line.strip()
 
             if not line.startswith('p4/') or line == "p4/HEAD":
@@ -3818,11 +3820,11 @@ def main():
             cmd.gitdir = os.path.abspath(".git")
             if not isValidGitDir(cmd.gitdir):
                 # "rev-parse --git-dir" without arguments will try $PWD/.git
-                cmd.gitdir = read_pipe("git rev-parse --git-dir").strip()
+                cmd.gitdir = read_pipe(git_build_cmd('rev-parse', '--git-dir')).strip()
                 if os.path.exists(cmd.gitdir):
-                    cdup = read_pipe("git rev-parse --show-cdup").strip()
+                    cdup = read_pipe(git_build_cmd('rev-parse', '--show-cdup')).strip()
                     if len(cdup) > 0:
-                        chdir(cdup);
+                        chdir(cdup)
 
         if not isValidGitDir(cmd.gitdir):
             if isValidGitDir(cmd.gitdir + "/.git"):

@@ -7,25 +7,25 @@
 #            2007 Trolltech ASA
 # License: MIT <http://www.opensource.org/licenses/mit-license.php>
 #
+
+import ctypes
+import marshal
+import platform
+import os
+import optparse
+import re
+import shutil
+import stat
+import subprocess
 import sys
+import tempfile
+import time
+import zipfile
+
 if sys.hexversion < 0x02040000:
     # The limiter is the subprocess module
     sys.stderr.write("git-p4: requires Python 2.4 or later.\n")
     sys.exit(1)
-import os
-import optparse
-import marshal
-import subprocess
-import tempfile
-import time
-import platform
-import re
-import shutil
-import stat
-import zipfile
-import zlib
-import ctypes
-import errno
 
 try:
     from subprocess import CalledProcessError
@@ -39,6 +39,7 @@ except ImportError:
         def __init__(self, returncode, cmd):
             self.returncode = returncode
             self.cmd = cmd
+
         def __str__(self):
             return "Command '%s' returned non-zero exit status %d" % (self.cmd, self.returncode)
 
@@ -599,7 +600,7 @@ def p4Where(depotPath):
             if data[:space] == depotPath:
                 output = entry
                 break
-    if output == None:
+    if output is None:
         return ""
     if output["code"] == "error":
         return ""
@@ -619,7 +620,7 @@ def currentGitBranch():
     return read_pipe_text(git_build_cmd('symbolic-ref', '--short', '-q', 'HEAD'))
 
 def isValidGitDir(path):
-    return git_dir(path) != None
+    return git_dir(path) is not None
 
 def parseRevision(ref):
     return read_pipe(git_build_cmd('rev-parse', ref)).strip()
@@ -1495,7 +1496,8 @@ class P4Submit(Command, P4UserMap):
                 (changelist, newUser))
 
         c = changes[0]
-        if c['User'] == newUser: return   # nothing to do
+        if c['User'] == newUser:
+            return   # nothing to do
         c['User'] = newUser
         input = marshal.dumps(c)
 
@@ -1544,7 +1546,6 @@ class P4Submit(Command, P4UserMap):
 #               (New changelists only.)
 """
         files_list = []
-        inFilesSection = False
         change_entry = None
         args = ['change', '-o']
         if changelist:
@@ -2007,7 +2008,7 @@ class P4Submit(Command, P4UserMap):
 
         if self.master:
             allowSubmit = gitConfig("git-p4.allowSubmit")
-            if len(allowSubmit) > 0 and not self.master in allowSubmit.split(","):
+            if allowSubmit and self.master not in allowSubmit.split(","):
                 die("%s is not in git-p4.allowSubmit" % self.master)
 
         [upstream, settings] = findUpstreamBranchPoint()
@@ -3587,8 +3588,7 @@ class P4Rebase(Command):
                 optparse.make_option("--import-labels", dest="importLabels", action="store_true"),
         ]
         self.importLabels = False
-        self.description = ("Fetches the latest revision from perforce and "
-                            + "rebases the current work (branch) against it")
+        self.description = "Fetches the latest revision from perforce and rebases the current work (branch) against it"
 
     def run(self, args):
         sync = P4Sync()
@@ -3701,8 +3701,7 @@ class P4Branches(Command):
     def __init__(self):
         Command.__init__(self)
         self.options = []
-        self.description = ("Shows the git branches that hold imports and their "
-                            + "corresponding perforce depot paths")
+        self.description = "Shows the git branches that hold imports and their corresponding perforce depot paths"
         self.verbose = False
 
     def run(self, args):
@@ -3788,7 +3787,7 @@ def main():
     global verbose
     verbose = cmd.verbose
     if cmd.needsGit:
-        if cmd.gitdir == None:
+        if cmd.gitdir is None:
             cmd.gitdir = os.path.abspath(".git")
             if not isValidGitDir(cmd.gitdir):
                 # "rev-parse --git-dir" without arguments will try $PWD/.git

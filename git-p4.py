@@ -578,7 +578,7 @@ def p4Cmd(cmd):
     result = {}
     for entry in list:
         result.update(entry)
-    return result;
+    return result
 
 def p4Where(depotPath):
     if not depotPath.endswith("/"):
@@ -670,7 +670,7 @@ def extractSettingsGitLog(log):
 def gitBranchExists(branch):
     proc = subprocess.Popen(git_build_cmd('rev-parse', branch),
                             stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-    return proc.wait() == 0;
+    return proc.wait() == 0
 
 _gitConfig = {}
 def gitConfig(key, typeSpecifier=None):
@@ -1283,7 +1283,7 @@ class P4RollBack(Command):
         maxChange = int(args[0])
 
         if "p4ExitCode" in p4Cmd("changes -m 1"):
-            die("Problems executing p4");
+            die("Problems executing p4")
 
         if self.rollbackLocalBranches:
             refPrefix = "refs/heads/"
@@ -3099,8 +3099,8 @@ class P4Sync(Command, P4UserMap):
     def importNewBranch(self, branch, maxChange):
         # make fast-import flush all changes to disk and update the refs using the checkpoint
         # command so that we can try to find the branch parent in the git history
-        self.gitStream.write("checkpoint\n\n");
-        self.gitStream.flush();
+        self.gitStream.write("checkpoint\n\n")
+        self.gitStream.flush()
         branchPrefix = self.depotPaths[0] + branch + "/"
         range = "@1,%s" % maxChange
         #print "prefix" + branchPrefix
@@ -3175,12 +3175,12 @@ class P4Sync(Command, P4UserMap):
                                 fullBranch = self.projectName + branch
                                 if fullBranch not in self.p4BranchesInGit:
                                     if not self.silent:
-                                        print("\n    Importing new branch %s" % fullBranch);
+                                        print("\n    Importing new branch %s" % fullBranch)
                                     if self.importNewBranch(branch, change - 1):
                                         parent = ""
                                         self.p4BranchesInGit.append(fullBranch)
                                     if not self.silent:
-                                        print("\n    Resuming with change %s" % change);
+                                        print("\n    Resuming with change %s" % change)
 
                                 if self.verbose:
                                     print "parent determined through known branches: %s" % parent
@@ -3240,7 +3240,7 @@ class P4Sync(Command, P4UserMap):
                                  % info['data'])
                 if info['data'].find("must refer to client") >= 0:
                     sys.stderr.write("This particular p4 error is misleading.\n")
-                    sys.stderr.write("Perhaps the depot path was misspelled.\n");
+                    sys.stderr.write("Perhaps the depot path was misspelled.\n")
                     sys.stderr.write("Depot path:  %s\n" % " ".join(self.depotPaths))
                 sys.exit(1)
             if 'p4ExitCode' in info:
@@ -3451,7 +3451,7 @@ class P4Sync(Command, P4UserMap):
         self.loadUserMapFromCache()
         self.labels = {}
         if self.detectLabels:
-            self.getLabels();
+            self.getLabels()
 
         if self.detectBranches:
             ## FIXME - what's a P4 projectName ?
@@ -3599,7 +3599,7 @@ class P4Rebase(Command):
 
     def rebase(self):
         if os.system(git_build_cmd('update-index', '--refresh')) != 0:
-            die("Some files in your working directory are modified and different than what is in your index. You can use git update-index <filename> to bring the index up to date or stash away all your changes with git stash.");
+            die("Some files in your working directory are modified and different than what is in your index. You can use git update-index <filename> to bring the index up to date or stash away all your changes with git stash.")
         if len(read_pipe(git_build_cmd('diff-index', 'HEAD', '--'))) > 0:
             die("You have uncommitted changes. Please commit them before rebasing or stash them away with git stash.")
 
@@ -3784,7 +3784,7 @@ def main():
         formatter=HelpFormatter(),
     )
 
-    (cmd, args) = parser.parse_args(sys.argv[2:], cmd);
+    (cmd, args) = parser.parse_args(sys.argv[2:], cmd)
     global verbose
     verbose = cmd.verbose
     if cmd.needsGit:

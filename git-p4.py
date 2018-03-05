@@ -821,7 +821,7 @@ def createOrUpdateBranchesFromOrigin(localRefPrefix="refs/remotes/p4/", silent=T
             system(git_build_cmd('update-ref', remoteHead, originHead))
 
 def originP4BranchesExist():
-        return gitBranchExists("origin") or gitBranchExists("origin/p4") or gitBranchExists("origin/p4/master")
+    return gitBranchExists("origin") or gitBranchExists("origin/p4") or gitBranchExists("origin/p4/master")
 
 
 def p4ParseNumericChangeRange(parts):
@@ -897,8 +897,7 @@ def p4ChangesForPaths(depotPaths, changeRange, requestedBlockSize):
 
         changeStart = end + 1
 
-    changes = sorted(changes)
-    return changes
+    return sorted(changes)
 
 def p4PathStartsWith(path, prefix):
     # This method tries to remedy a potential mixed-case issue:
@@ -2746,21 +2745,17 @@ class P4Sync(Command, P4UserMap):
 
         if verbose:
             print "writing tag %s for commit %s" % (labelName, commit)
-        self.gitStream.write("tag %s\n" % labelName)
-        self.gitStream.write("from %s\n" % commit)
-
-        owner = labelDetails.get('Owner', None)
+            print "labelDetails=", labelDetails
 
         # Try to use the owner of the p4 label, or failing that,
         # the current p4 user id.
+        owner = labelDetails.get('Owner', None)
         email = self.make_email(owner or self.p4UserId())
-        tagger = "%s %s %s" % (email, epoch, self.tz)
-
-        self.gitStream.write("tagger %s\n" % tagger)
-
-        print "labelDetails=", labelDetails
         description = labelDetails.get('Description', 'Label from git p4')
 
+        self.gitStream.write("tag %s\n" % labelName)
+        self.gitStream.write("from %s\n" % commit)
+        self.gitStream.write("tagger %s %s %s\n" % (email, epoch, self.tz))
         self.gitStream.write("data %d\n" % len(description))
         self.gitStream.write(description)
         self.gitStream.write("\n")
@@ -2776,7 +2771,7 @@ class P4Sync(Command, P4UserMap):
     def hasBranchPrefix(self, path):
         if not self.branchPrefixes:
             return True
-        hasPrefix = [p for p in self.branchPrefixes if p4PathStartsWith(path, p)]
+        hasPrefix = any(p4PathStartsWith(path, p) for p in self.branchPrefixes)
         if not hasPrefix and self.verbose:
             print('Ignoring file outside of prefix: {0}'.format(path))
         return hasPrefix
@@ -3262,10 +3257,11 @@ class P4Sync(Command, P4UserMap):
             print self.gitError.read()
 
     def run(self, args):
+        # P4Sync.run
         self.depotPaths = []
         self.changeRange = ""
         self.previousDepotPaths = []
-        self.hasOrigin = False
+        self.hasOrigin = self.syncWithOrigin and originP4BranchesExist()
 
         # map from branch depot path to parent branch
         self.knownBranches = {}
@@ -3277,7 +3273,6 @@ class P4Sync(Command, P4UserMap):
             self.refPrefix = "refs/heads/p4/"
 
         if self.syncWithOrigin:
-            self.hasOrigin = originP4BranchesExist()
             if self.hasOrigin:
                 if not self.silent:
                     print 'Syncing with origin first, using "git fetch origin"'

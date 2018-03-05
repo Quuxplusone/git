@@ -2739,15 +2739,15 @@ class P4Sync(Command, P4UserMap):
         else:
             return "%s <a@b>" % userid
 
-    def streamTag(self, gitStream, labelName, labelDetails, commit, epoch):
+    def streamTag(self, labelName, labelDetails, commit, epoch):
         """ Stream a p4 tag.
         commit is either a git commit, or a fast-import mark, ":<p4commit>"
         """
 
         if verbose:
             print "writing tag %s for commit %s" % (labelName, commit)
-        gitStream.write("tag %s\n" % labelName)
-        gitStream.write("from %s\n" % commit)
+        self.gitStream.write("tag %s\n" % labelName)
+        self.gitStream.write("from %s\n" % commit)
 
         owner = labelDetails.get('Owner', None)
 
@@ -2756,14 +2756,14 @@ class P4Sync(Command, P4UserMap):
         email = self.make_email(owner or self.p4UserId())
         tagger = "%s %s %s" % (email, epoch, self.tz)
 
-        gitStream.write("tagger %s\n" % tagger)
+        self.gitStream.write("tagger %s\n" % tagger)
 
         print "labelDetails=", labelDetails
         description = labelDetails.get('Description', 'Label from git p4')
 
-        gitStream.write("data %d\n" % len(description))
-        gitStream.write(description)
-        gitStream.write("\n")
+        self.gitStream.write("data %d\n" % len(description))
+        self.gitStream.write(description)
+        self.gitStream.write("\n")
 
     def inClientSpec(self, path):
         if not self.clientSpecDirs:
@@ -2846,7 +2846,7 @@ class P4Sync(Command, P4UserMap):
                     cleanedFiles[info["depotFile"]] = info["rev"]
 
                 if cleanedFiles == labelRevisions:
-                    self.streamTag(self.gitStream, 'tag_%s' % labelDetails['label'], labelDetails, branch, epoch)
+                    self.streamTag('tag_%s' % labelDetails['label'], labelDetails, branch, epoch)
 
                 else:
                     if not self.silent:
@@ -2887,7 +2887,7 @@ class P4Sync(Command, P4UserMap):
     # exist, so assume that if all the files are at the same revision
     # then we can use that, or it's something more complicated we should
     # just ignore.
-    def importP4Labels(self, stream, p4Labels):
+    def importP4Labels(self, p4Labels):
         if verbose:
             print "import p4 labels: " + ' '.join(p4Labels)
 
@@ -2944,7 +2944,7 @@ class P4Sync(Command, P4UserMap):
                         tmwhen = 1
 
                     when = int(time.mktime(tmwhen))
-                    self.streamTag(stream, name, labelDetails, gitCommit, when)
+                    self.streamTag(name, labelDetails, gitCommit, when)
                     if verbose:
                         print "p4 label %s mapped to git commit %s" % (name, gitCommit)
             else:
@@ -3542,7 +3542,7 @@ class P4Sync(Command, P4UserMap):
             gitTags = getGitTags()
 
             missingP4Labels = p4Labels - gitTags
-            self.importP4Labels(self.gitStream, missingP4Labels)
+            self.importP4Labels(missingP4Labels)
 
         self.gitStream.close()
         if self.importProcess.wait() != 0:

@@ -667,6 +667,10 @@ def extractSettingsGitLog(log):
         values['depot-paths'] = paths.split(',')
     return values
 
+def get_last_p4_change_already_in_git(commit):
+    settings = extractSettingsGitLog(extractLogMessageFromGitCommit(commit))
+    return int(settings['change']) if 'change' in settings else None
+
 def gitBranchExists(branch):
     proc = subprocess.Popen(git_build_cmd('rev-parse', branch),
                             stderr=subprocess.PIPE, stdout=subprocess.PIPE)
@@ -2374,6 +2378,7 @@ class P4Sync(Command, P4UserMap):
         self.changesFile = ""
         self.syncWithOrigin = True
         self.importIntoRemotes = True
+        self.initialParent = None
         self.maxChanges = ""
         self.changes_block_size = None
         self.keepRepoPath = False
@@ -2385,6 +2390,7 @@ class P4Sync(Command, P4UserMap):
         self.clientSpecDirs = None
         self.tempBranches = []
         self.tempBranchLocation = "refs/git-p4-tmp"
+        self.checkpointInterval = 10  # seconds
         self.largeFileSystem = None
 
         if gitConfig('git-p4.largeFileSystem'):
@@ -2776,13 +2782,13 @@ class P4Sync(Command, P4UserMap):
             print('Ignoring file outside of prefix: {0}'.format(path))
         return hasPrefix
 
-    def commit(self, details, files, branch, parent=""):
+    def commit(self, details, files, branch, parent):
         epoch = details["time"]
         author = details["user"]
         jobs = self.extractJobsFromCommit(details)
 
         if self.verbose:
-            print('commit into {0}'.format(branch))
+            print 'commit into %s with parent "%s".' % (branch, parent)
 
         if self.clientSpecDirs:
             self.clientSpecDirs.update_client_spec_path_cache(files)
@@ -2813,7 +2819,7 @@ class P4Sync(Command, P4UserMap):
             self.gitStream.write(": options = %s" % details['options'])
         self.gitStream.write("]\nEOT\n\n")
 
-        if len(parent) > 0:
+        if parent is not None:
             if self.verbose:
                 print "parent %s" % parent
             self.gitStream.write("from %s\n" % parent)
@@ -3122,7 +3128,12 @@ class P4Sync(Command, P4UserMap):
 
     def importChanges(self, changes):
         cnt = 1
+        last_checkpoint_time = time.time()
         for change in changes:
+            if time.time() > last_checkpoint_time + self.checkpointInterval:
+                self.checkpoint()
+                last_checkpoint_time = time.time()
+
             description = p4_describe(change)
             self.updateOptionDict(description)
 
@@ -3182,7 +3193,7 @@ class P4Sync(Command, P4UserMap):
                             tempBranch = "%s/%d" % (self.tempBranchLocation, change)
                             if self.verbose:
                                 print "Creating temporary branch: " + tempBranch
-                            self.commit(description, filesForCommit, tempBranch)
+                            self.commit(description, filesForCommit, tempBranch, '')
                             self.tempBranches.append(tempBranch)
                             self.checkpoint()
                             blob = self.searchParent(parent, branch, tempBranch)
@@ -3194,10 +3205,9 @@ class P4Sync(Command, P4UserMap):
                             self.commit(description, filesForCommit, branch, parent)
                 else:
                     files = self.extractFilesFromCommit(description)
-                    self.commit(description, files, self.branch,
-                                self.initialParent)
+                    self.commit(description, files, self.branch, self.initialParent)
                     # only needed once, to connect to the previous commit
-                    self.initialParent = ""
+                    self.initialParent = None
             except IOError:
                 print self.gitError.read()
                 sys.exit(1)
@@ -3251,7 +3261,7 @@ class P4Sync(Command, P4UserMap):
 
         self.updateOptionDict(details)
         try:
-            self.commit(details, self.extractFilesFromCommit(details), self.branch)
+            self.commit(details, self.extractFilesFromCommit(details), self.branch, '')
         except IOError:
             print "IO error with git fast-import. Is your git version recent enough?"
             print self.gitError.read()
@@ -3499,6 +3509,11 @@ class P4Sync(Command, P4UserMap):
                                                               self.changeRange)
                 changes = p4ChangesForPaths(self.depotPaths, self.changeRange, self.changes_block_size)
 
+                if self.cloneContinue:
+                    self.initialParent = 'p4/master^0'
+                    lastP4Change = get_last_p4_change_already_in_git(self.initialParent)
+                    changes = sorted(c for c in changes if c > lastP4Change)
+
                 if len(self.maxChanges) > 0:
                     changes = changes[:min(int(self.maxChanges), len(changes))]
 
@@ -3511,13 +3526,8 @@ class P4Sync(Command, P4UserMap):
 
                 self.updatedBranches = set()
 
-                if not self.detectBranches:
-                    if args:
-                        # start a new branch
-                        self.initialParent = ""
-                    else:
-                        # build on a previous revision
-                        self.initialParent = parseRevision(self.branch)
+                if self.branch and not self.detectBranches:
+                    self.initialParent = self.initialParent or parseRevision(self.branch)
 
                 self.importChanges(changes)
 
@@ -3606,7 +3616,10 @@ class P4Clone(P4Sync):
                                  help="where to leave result of the clone"),
             optparse.make_option("--bare", dest="cloneBare",
                                  action="store_true", default=False),
+            optparse.make_option("--continue", dest="cloneContinue",
+                                 action="store_true", default=False),
         ]
+        self.cloneContinue = False
         self.cloneDestination = None
         self.needsGit = False
         self.cloneBare = False
@@ -3657,6 +3670,9 @@ class P4Clone(P4Sync):
         retcode = subprocess.call(init_cmd)
         if retcode:
             raise CalledProcessError(retcode, init_cmd)
+
+        if self.cloneContinue:
+            self.initialParent = 'p4/master^0'
 
         if not P4Sync.run(self, depotPaths):
             return False
